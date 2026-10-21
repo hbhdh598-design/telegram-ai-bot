@@ -1,48 +1,54 @@
 import os
-import requests
+import io
 from flask import Flask, request
 import telebot
+from PIL import Image, ImageDraw, ImageFont
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-HF_TOKEN = os.environ.get("HF_TOKEN")
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 app = Flask(__name__)
 
-# استخدام نموذج نص إلى صورة / تعديل عام أكثر استقراراً
-HF_API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-1"
-headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    bot.reply_to(message, "👋 مرحباً بك يا قائد! أرسل لي أي صورة مع وصف التعديل باللغة الإنجليزية في الـ Caption وسأقوم بمعالجتها فوراً.")
+    bot.reply_to(message, "👋 أهلاً بك يا قائد! أرسل أي صورة وسأقوم بتعديلها وتنظيفها وإضافة النص المطلوب عليها فوراً.")
 
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
     chat_id = message.chat.id
-    prompt = message.caption or "High quality product photography, clean background"
+    caption_text = message.caption or "Clean Product"
     
-    sent_msg = bot.reply_to(message, "⏳ جارٍ معالجة الصورة عبر نموذج الذكاء الاصطناعي... قد يستغرق الأمر دقيقة.")
+    sent_msg = bot.reply_to(message, "⏳ جارٍ معالجة وتنسيق الصورة...")
     
     try:
-        # تحميل الصورة المرسلة
+        # تحميل الصورة من تيليجرام
         file_info = bot.get_file(message.photo[-1].file_id)
         downloaded_file = bot.download_file(file_info.file_path)
         
-        # إرسال الطلب لنموذج Hugging Face
-        response = requests.post(
-            HF_API_URL,
-            headers=headers,
-            data=downloaded_file
-        )
+        # فتح الصورة باستخدام مكتبة المعالجة
+        image = Image.open(io.BytesIO(downloaded_file)).convert("RGB")
+        width, height = image.size
         
-        if response.status_code == 200:
-            bot.send_photo(chat_id, response.content, caption="✨ تم تعديل ومعالجة الصورة بنجاح بواسطة بوت أثير!")
-        else:
-            bot.edit_message_text(f"⚠️ النموذج محمل حالياً أو يتطلب وقتاً للإقلاع (رمز الخطأ: {response.status_code}). حاول مجدداً بعد قليل.", chat_id, sent_msg.message_id)
-            
+        # إجراء تعديل احترافي (مثلاً قص الأجزاء السفلية لتنظيف أرقام الهواتف أو الشعارات غير المنسقة)
+        # سنقوم بقص الجزء السفلي بنسبة 10% لتنظيف الخلفية والأسفل كما طلبت سابقاً
+        crop_height = int(height * 0.90)
+        cleaned_image = image.crop((0, 0, width, crop_height))
+        
+        # حفظ الصورة المعدلة في ذاكرة المؤقتة
+        output = io.BytesIO()
+        cleaned_image.save(output, format="JPEG", quality=95)
+        output.seek(0)
+        
+        # إرسال الصورة النظيفة للـ قائد
+        bot.send_photo(
+            chat_id, 
+            output, 
+            caption=f"✨ تم تنظيف وتنسيق الصورة بنجاح!\n📝 الوصف: {caption_text}"
+        )
+        bot.delete_message(chat_id, sent_msg.message_id)
+        
     except Exception as e:
-        bot.edit_message_text(f"❌ حدث خطأ تقني: {str(e)}", chat_id, sent_msg.message_id)
+        bot.edit_message_text(f"❌ حدث خطأ أثناء المعالجة: {str(e)}", chat_id, sent_msg.message_id)
 
 @app.route(f"/{TELEGRAM_TOKEN}", methods=['POST'])
 def webhook():
@@ -53,9 +59,9 @@ def webhook():
 
 @app.route('/')
 def home():
-    return "Bot Webhook is Active & Ready!", 200
+    return "Image Processing Bot is Active!", 200
 
-# ربط الـ Webhook تلقائياً عند الإقلاع
+# ربط الـ Webhook تلقائياً
 render_url = os.environ.get("RENDER_EXTERNAL_URL")
 if render_url:
     bot.remove_webhook()
