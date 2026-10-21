@@ -16,7 +16,7 @@ user_instructions = {}
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    bot.reply_to(message, "👋 مرحباً بك! أرسل لي أمر التعديل أو أرسل الصورة مباشرة مع وصف التعديل في النص المرفق.")
+    bot.reply_to(message, "👋 مرحباً بك! أرسل لي أمر التعديل كـ نص، أو أرسل الصورة مباشرة مع وصف التعديل.")
 
 @bot.message_handler(content_types=['text'])
 def handle_text(message):
@@ -26,7 +26,6 @@ def handle_text(message):
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
     chat_id = message.chat.id
-    # إما استخدام النص المرفق بالصورة (caption) أو التنسيق المُدخل سابقاً
     prompt = message.caption or user_instructions.get(chat_id, "clean product photo, high quality")
     
     bot.reply_to(message, f"⏳ جاري معالجة الصورة بـ: «{prompt}»... انتظر لحظات.")
@@ -60,15 +59,12 @@ def webhook():
 def home():
     return "Bot Webhook is Running Active!", 200
 
-def set_bot_webhook():
-    render_url = os.environ.get("RENDER_EXTERNAL_URL")
-    if render_url:
-        webhook_url = f"{render_url}/{TELEGRAM_TOKEN}"
-        bot.remove_webhook()
-        bot.set_webhook(url=webhook_url)
+# تفعيل الـ Webhook تلقائياً فور تشغيل السيرفر
+render_url = os.environ.get("RENDER_EXTERNAL_URL")
+if render_url:
+    bot.remove_webhook()
+    bot.set_webhook(url=f"{render_url}/{TELEGRAM_TOKEN}")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
-else:
-    set_bot_webhook()
