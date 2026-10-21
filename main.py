@@ -9,44 +9,40 @@ HF_TOKEN = os.environ.get("HF_TOKEN")
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 app = Flask(__name__)
 
-HF_API_URL = "https://api-inference.huggingface.co/models/runwayml/stable-diffusion-inpainting"
+# استخدام نموذج نص إلى صورة / تعديل عام أكثر استقراراً
+HF_API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-1"
 headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-
-user_instructions = {}
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    bot.reply_to(message, "👋 مرحباً بك! أرسل لي أمر التعديل كـ نص، أو أرسل الصورة مباشرة مع وصف التعديل.")
-
-@bot.message_handler(content_types=['text'])
-def handle_text(message):
-    user_instructions[message.chat.id] = message.text
-    bot.reply_to(message, f"✅ تم حفظ أمر التعديل:\n«{message.text}»\n\nأرسل الصورة الآن ليبدأ التعديل!")
+    bot.reply_to(message, "👋 مرحباً بك يا قائد! أرسل لي أي صورة مع وصف التعديل باللغة الإنجليزية في الـ Caption وسأقوم بمعالجتها فوراً.")
 
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
     chat_id = message.chat.id
-    prompt = message.caption or user_instructions.get(chat_id, "clean product photo, high quality")
+    prompt = message.caption or "High quality product photography, clean background"
     
-    bot.reply_to(message, f"⏳ جاري معالجة الصورة بـ: «{prompt}»... انتظر لحظات.")
+    sent_msg = bot.reply_to(message, "⏳ جارٍ معالجة الصورة عبر نموذج الذكاء الاصطناعي... قد يستغرق الأمر دقيقة.")
     
     try:
+        # تحميل الصورة المرسلة
         file_info = bot.get_file(message.photo[-1].file_id)
         downloaded_file = bot.download_file(file_info.file_path)
         
+        # إرسال الطلب لنموذج Hugging Face
         response = requests.post(
             HF_API_URL,
             headers=headers,
-            data=downloaded_file,
-            params={"parameters": {"prompt": prompt}}
+            data=downloaded_file
         )
         
         if response.status_code == 200:
-            bot.send_photo(chat_id, response.content, caption="✨ تم تعديل الصورة بنجاح!")
+            bot.send_photo(chat_id, response.content, caption="✨ تم تعديل ومعالجة الصورة بنجاح بواسطة بوت أثير!")
         else:
-            bot.reply_to(message, f"⚠️ حدث خطأ من نموذج AI - رمز الاستجابة: {response.status_code}")
+            bot.edit_message_text(f"⚠️ النموذج محمل حالياً أو يتطلب وقتاً للإقلاع (رمز الخطأ: {response.status_code}). حاول مجدداً بعد قليل.", chat_id, sent_msg.message_id)
+            
     except Exception as e:
-        bot.reply_to(message, f"❌ حدث خطأ غير متوقع: {str(e)}")
+        bot.edit_message_text(f"❌ حدث خطأ تقني: {str(e)}", chat_id, sent_msg.message_id)
 
 @app.route(f"/{TELEGRAM_TOKEN}", methods=['POST'])
 def webhook():
@@ -57,9 +53,9 @@ def webhook():
 
 @app.route('/')
 def home():
-    return "Bot Webhook is Running Active!", 200
+    return "Bot Webhook is Active & Ready!", 200
 
-# تفعيل الـ Webhook تلقائياً فور تشغيل السيرفر
+# ربط الـ Webhook تلقائياً عند الإقلاع
 render_url = os.environ.get("RENDER_EXTERNAL_URL")
 if render_url:
     bot.remove_webhook()
